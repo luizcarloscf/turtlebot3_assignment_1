@@ -13,6 +13,11 @@ export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/opt/ros/<ros2-distro>/share/turtleb
 ```
 In the same terminal, run:
 ```bash
+cd ~/ros_ws/src
+git clone https://github.com/luizcarloscf/turtlebot3_assignment_1.git
+cd ~/ros_ws
+colcon build
+source install/setup.bash
 ros2 launch  turtlebot3_assignment_1 turtlebot3_assignment_1.launch.py 
 ```
 
