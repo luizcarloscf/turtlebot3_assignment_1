@@ -10,34 +10,42 @@ from launch.substitutions import LaunchConfiguration
 def generate_launch_description():
 
     turtlebot3_random_walk_launch_dir = os.path.join(
-        get_package_share_directory('turtlebot3_random_walk'),
-        'launch',
+        get_package_share_directory("turtlebot3_random_walk"),
+        "launch",
     )
+
     turtlebot3_gazebo_launch_dir = os.path.join(
-        get_package_share_directory('turtlebot3_gazebo'),
-        'launch',
+        get_package_share_directory("turtlebot3_assignment_1"),
+        "launch",
     )
-    use_sim_time = LaunchConfiguration('use_sim_time', default='true')
-    x_pose = LaunchConfiguration('x_pose', default='-1.0')
-    y_pose = LaunchConfiguration('y_pose', default='-0.5')
+
+    world_group = LaunchConfiguration("world_group", default="4")
+    world_number = LaunchConfiguration("world_number", default="1")
+    use_sim_time = LaunchConfiguration("use_sim_time", default="true")
+    x_pose = LaunchConfiguration("x_pose", default="-1.0")
+    y_pose = LaunchConfiguration("y_pose", default="-0.5")
+
     turtlebot3_world_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
                 turtlebot3_gazebo_launch_dir,
-                'turtlebot3_world.launch.py',
+                "turtlebot3_world.launch.py",
             ),
         ),
         launch_arguments={
-            'x_pose': x_pose,
-            'y_pose': y_pose,
-            'use_sim_time': use_sim_time,
+            "x_pose": x_pose,
+            "y_pose": y_pose,
+            "use_sim_time": use_sim_time,
+            "world_group": world_group,
+            "world_number": world_number,
         }.items(),
     )
+
     turtlebot3_random_walk_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
                 turtlebot3_random_walk_launch_dir,
-                'turtlebot3_random_walk.launch.py',
+                "turtlebot3_random_walk.launch.py",
             ),
         ),
     )
