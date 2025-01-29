@@ -32,3 +32,8 @@ Then, open another terminal and run to enable random walk:
 source /opt/ros/<ros2-distro>/setup.bash
 ros2 service call /enable std_srvs/srv/SetBool '{data: True}'
 ```
+
+Then, in terminal run to start classifier:
+```bash
+ros2 run turtlebot3_object_classifier object_classifier
+```
