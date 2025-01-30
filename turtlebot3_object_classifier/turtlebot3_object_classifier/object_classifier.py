@@ -45,7 +45,7 @@ class Object_classifier(Node):
 
         self.convert_coordinates(scan_data, odometry)
 
-        self.update_plot()
+        #self.update_plot()
 
 
 
@@ -61,43 +61,7 @@ class Object_classifier(Node):
     #    self.ax.autoscale_view()
     #    plt.pause(0.01)
 
-    def update_plot(self):
-        """
-        Atualiza o gráfico com os pontos do scan e a posição do robô.
-        """
-        if self.scan_points is None or len(self.scan_points) == 0:
-            return
-
-        # Aplicar DBSCAN para obter clusters
-        db = DBSCAN(eps=0.15, min_samples=5).fit(self.scan_points)
-        cluster_labels = db.labels_
-
-        # Criar um mapa de cores
-        unique_labels = set(cluster_labels)
-        colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))  # Gera cores variadas
-
-        self.ax.clear()  # Limpa o gráfico para redesenhar
-        
-        for label, color in zip(unique_labels, colors):
-            cluster_points = self.scan_points[cluster_labels == label]
-            if label == -1:  # Pontos considerados ruído (parede)
-                color = 'black'
-                marker = 's'  # Quadrado para indicar parede
-                label_text = "Parede"
-            else:
-                color = color  # Cor dinâmica do cluster
-                marker = 'o'  # Círculo para clusters
-                label_text = f"Cluster {label} ({np.mean(cluster_points[:, 0]):.2f}, {np.mean(cluster_points[:, 1]):.2f})"
-
-            self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c=[color], marker=marker, s=5, label=label_text)
-        
-        # Adicionar a posição do robô
-        self.ax.scatter(self.pose_odom[0], self.pose_odom[1], c='k', marker='x', s=100, label="Robô")
-        
-        self.ax.legend()
-        self.ax.relim()
-        self.ax.autoscale_view()
-        plt.pause(0.01)
+    
 
 
 
@@ -123,10 +87,52 @@ class Object_classifier(Node):
                 pose_tf = M_LW @ M_PL @ P_S  # Transforma o ponto para o referencial global
                 self.scan_points = sub_sampling(pose_tf.T[0][0:2], self.scan_points)
 
-        cluster_len = classifier(self.scan_points)
+        cluster_len = classifier(self.scan_points, self)
         self.pub_msg.data = cluster_len
         self.publisher.publish(self.pub_msg)
 
+
+def update_plot(scan_points, cluster_labels, classified_clusters, self):
+    """
+    Atualiza o gráfico com os pontos do scan, destacando os clusters com cores diferentes.
+    """
+    if scan_points is None or len(scan_points) == 0:
+        return
+
+    unique_labels = set(cluster_labels)
+    colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))  # Gera cores variadas
+    
+    self.ax.clear()  # Limpa o gráfico atual
+    for label, color in zip(unique_labels, colors):
+        cluster_points = scan_points[cluster_labels == label]
+        
+        # Plotando os pontos do cluster com a cor correspondente
+        scatter = self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c=[color], marker='o', s=50, label=f"Cluster {label}")
+        
+        # Se o cluster for classificado, incluir informações adicionais na legenda
+        if label in classified_clusters:
+            cluster_info = classified_clusters[label]
+            # Referência à posição, tipo e tamanho na legenda
+            size = f"Tamanho: {cluster_info.get('diameter', cluster_info.get('width', 'N/A'))}"
+            shape_type = cluster_info["type"]
+            
+            # Atualizando o rótulo da legenda com as informações adicionais
+            scatter.set_label(f"Cluster {label} - {shape_type.capitalize()}, {size}")
+
+    # Adicionando legenda
+    self.ax.legend(title="Clusters", loc="best", fontsize=10)
+    
+    # Títulos e rótulos
+    self.ax.set_title("Visualização dos Clusters", fontsize=14)
+    self.ax.set_xlabel("Feature 1", fontsize=12)
+    self.ax.set_ylabel("Feature 2", fontsize=12)
+    
+    # Atualiza a posição do robô (caso necessário)
+    self.line_robot.set_data(self.pose_odom[0], self.pose_odom[1])
+    self.ax.relim()
+    self.ax.autoscale_view()
+    
+    plt.pause(0.01)
 
 def circle_fitting(cluster_points):
 
@@ -180,10 +186,40 @@ def get_rectangle_dimensions(cluster_points):
     return width, height
 
 
-def classifier(scan_points):
+#def classifier(scan_points):
+#    cluster_len = 0
+#    db = DBSCAN(eps=0.15, min_samples=5).fit(scan_points)
+#    cluster_labels = db.labels_
+#    print("\n\n-----------------------------------------\n")
+#
+#    for label in set(cluster_labels):
+#        if label == -1:
+#            continue
+#        cluster_points = scan_points[cluster_labels == label]
+#        if cluster_points.shape[0] > cluster_len:
+#            cluster_len = cluster_points.shape[0]
+#        try:
+#            center_x, center_y, raio, e = circle_fitting(cluster_points)
+#            if raio < 2:
+#                if np.abs(e) <= 0.15:
+#                    diameter = get_circle_diameter(raio)
+#                    print(f"Círculo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Diâmetro: {diameter:.2f}")
+#                else:
+#                    width, height = get_rectangle_dimensions(cluster_points)
+#                    print(f"Retângulo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Largura: {width:.2f}, Altura: {height:.2f}")
+#        except:
+#            pass
+#    
+#    update_plot(cluster_len)
+#
+#    return cluster_len
+
+def classifier(scan_points, self):
     cluster_len = 0
-    db = DBSCAN(eps=0.15, min_samples=5).fit(scan_points)
+    db = DBSCAN(eps=0.13, min_samples=5).fit(scan_points)
     cluster_labels = db.labels_
+    classified_clusters = {}
+    
     print("\n\n-----------------------------------------\n")
 
     for label in set(cluster_labels):
@@ -197,15 +233,17 @@ def classifier(scan_points):
             if raio < 2:
                 if np.abs(e) <= 0.15:
                     diameter = get_circle_diameter(raio)
+                    classified_clusters[label] = {"type": "circle", "center_x": center_x, "center_y": center_y, "diameter": diameter}
                     print(f"Círculo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Diâmetro: {diameter:.2f}")
                 else:
                     width, height = get_rectangle_dimensions(cluster_points)
+                    classified_clusters[label] = {"type": "rectangle", "center_x": center_x, "center_y": center_y, "width": width, "height": height}
                     print(f"Retângulo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Largura: {width:.2f}, Altura: {height:.2f}")
         except:
             pass
-
+    
+    update_plot(scan_points, cluster_labels, classified_clusters, self)
     return cluster_len
-
 
 
 def convert_quaternion(quaternion):
@@ -231,7 +269,7 @@ def sub_sampling(pose_tf, array_pts):
     else:
         pose_repeat = np.repeat(pose_tf, repeats = [array_pts.shape[0]], axis=0)
         dist = np.linalg.norm(array_pts - pose_repeat, axis = 1)
-        if np.any(dist <= 0.05):
+        if np.any(dist <= 0.04):
             pass
         else:
             array_pts = np.vstack((array_pts,pose_tf))
