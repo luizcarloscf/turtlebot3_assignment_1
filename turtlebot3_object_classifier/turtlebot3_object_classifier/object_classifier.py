@@ -8,7 +8,7 @@ import math
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
 import numpy as np
-
+import sys
 
 class Object_classifier(Node):
 
@@ -37,31 +37,18 @@ class Object_classifier(Node):
         self.line, = self.ax.plot([], [], 'bo', markersize=2)
         self.line_robot, = self.ax.plot([], [], 'k', markersize=2)
 
-
-
+        self.previous_max_points = 0 # Variável para armazenar o número de pontos do maior cluster na iteração anterior
+        self.no_growth_counter = 0
+        self.NO_GROWTH_LIMIT = 7
+        self.classified_clusters = {}
+        self.classification_info = [] 
+        
     def scan(self, scan_data, odometry):
         if not self.scan_init:
             self.scan_init = True
 
         self.convert_coordinates(scan_data, odometry)
 
-        #self.update_plot()
-
-
-
-    #def update_plot(self):
-    #    """
-    #    Atualiza o gráfico com os pontos do scan e a posição do robô.
-    #    """
-    #    x_data = self.scan_points[:, 0]
-    #    y_data = self.scan_points[:, 1]
-    #    self.line.set_data(x_data, y_data)
-    #    self.line_robot.set_data(self.pose_odom[0], self.pose_odom[1])
-    #    self.ax.relim()
-    #    self.ax.autoscale_view()
-    #    plt.pause(0.01)
-
-    
 
 
 
@@ -103,11 +90,22 @@ def update_plot(scan_points, cluster_labels, classified_clusters, self):
     colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))  # Gera cores variadas
     
     self.ax.clear()  # Limpa o gráfico atual
+
+    max_points = 0
+    max_label = None
+
     for label, color in zip(unique_labels, colors):
+        if label == -1:
+            continue  # Ignorar o ruído
         cluster_points = scan_points[cluster_labels == label]
         
+        # Verificar se este cluster tem mais pontos
+        if len(cluster_points) > max_points:
+            max_points = len(cluster_points)
+            max_label = label
+        
         # Plotando os pontos do cluster com a cor correspondente
-        scatter = self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c=[color], marker='o', s=50, label=f"Cluster {label}")
+        scatter = self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c=[color], marker='o', s=10, label=f"Cluster {label}")
         
         # Se o cluster for classificado, incluir informações adicionais na legenda
         if label in classified_clusters:
@@ -118,6 +116,11 @@ def update_plot(scan_points, cluster_labels, classified_clusters, self):
             
             # Atualizando o rótulo da legenda com as informações adicionais
             scatter.set_label(f"Cluster {label} - {shape_type.capitalize()}, {size}")
+
+    # Rotular o maior objeto como 'paredes externas'
+    if max_label is not None:
+        cluster_points = scan_points[cluster_labels == max_label]
+        self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c='red', marker='o', s=5, label="paredes externas", edgecolors='r', linewidths=2)
 
     # Adicionando legenda
     self.ax.legend(title="Clusters", loc="best", fontsize=10)
@@ -158,8 +161,8 @@ def circle_fitting(cluster_points):
 
     raio = math.sqrt(cx**2 + cy**2 - T[2, 0])
 
-    # Calculando todas as distâncias dos pontos ao centro do círculo
-    distances = [np.hypot(cx - ix, cy - iy) for (ix, iy) in zip(x, y)]
+   
+    distances = [np.hypot(cx - ix, cy - iy) for (ix, iy) in zip(x, y)] #distâncias dos pontos ao centro do círculo
 
     max_dist = max(distances) # Maior distância
 
@@ -186,59 +189,62 @@ def get_rectangle_dimensions(cluster_points):
     return width, height
 
 
-#def classifier(scan_points):
-#    cluster_len = 0
-#    db = DBSCAN(eps=0.15, min_samples=5).fit(scan_points)
-#    cluster_labels = db.labels_
-#    print("\n\n-----------------------------------------\n")
-#
-#    for label in set(cluster_labels):
-#        if label == -1:
-#            continue
-#        cluster_points = scan_points[cluster_labels == label]
-#        if cluster_points.shape[0] > cluster_len:
-#            cluster_len = cluster_points.shape[0]
-#        try:
-#            center_x, center_y, raio, e = circle_fitting(cluster_points)
-#            if raio < 2:
-#                if np.abs(e) <= 0.15:
-#                    diameter = get_circle_diameter(raio)
-#                    print(f"Círculo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Diâmetro: {diameter:.2f}")
-#                else:
-#                    width, height = get_rectangle_dimensions(cluster_points)
-#                    print(f"Retângulo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Largura: {width:.2f}, Altura: {height:.2f}")
-#        except:
-#            pass
-#    
-#    update_plot(cluster_len)
-#
-#    return cluster_len
-
 def classifier(scan_points, self):
     cluster_len = 0
-    db = DBSCAN(eps=0.13, min_samples=5).fit(scan_points)
+    db = DBSCAN(eps=0.1, min_samples=4).fit(scan_points)
     cluster_labels = db.labels_
     classified_clusters = {}
     
     print("\n\n-----------------------------------------\n")
 
+    # Identificar o cluster com mais pontos
+    max_points = 0
+    max_label = None
     for label in set(cluster_labels):
         if label == -1:
+            continue
+        cluster_points = scan_points[cluster_labels == label]
+        if len(cluster_points) > max_points:
+            max_points = len(cluster_points)
+            max_label = label
+
+    print(f"O maior cluster é o {max_label} com {max_points} pontos, anteriormente existiam {self.previous_max_points}")
+    print(f"Restão {self.NO_GROWTH_LIMIT - (self.no_growth_counter)} tentativas para encerrar \n")
+    if max_points == self.previous_max_points:
+        self.no_growth_counter += 1
+        if self.no_growth_counter >= self.NO_GROWTH_LIMIT:
+            # Salvar o último print em um arquivo .txt
+            with open("ultimo_print.txt", "w") as file:
+                for info in self.classification_info:
+                    file.write(info + "\n")            # Fechar o código
+            sys.exit()
+    else:
+        self.no_growth_counter = 0
+    self.previous_max_points = max_points
+    
+    self.classification_info.clear()
+    
+    for label in set(cluster_labels):
+        if label == -1 or label == max_label:
             continue
         cluster_points = scan_points[cluster_labels == label]
         if cluster_points.shape[0] > cluster_len:
             cluster_len = cluster_points.shape[0]
         try:
+            
             center_x, center_y, raio, e = circle_fitting(cluster_points)
-            if raio < 2:
-                if np.abs(e) <= 0.15:
-                    diameter = get_circle_diameter(raio)
-                    classified_clusters[label] = {"type": "circle", "center_x": center_x, "center_y": center_y, "diameter": diameter}
-                    print(f"Círculo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Diâmetro: {diameter:.2f}")
-                else:
-                    width, height = get_rectangle_dimensions(cluster_points)
-                    classified_clusters[label] = {"type": "rectangle", "center_x": center_x, "center_y": center_y, "width": width, "height": height}
-                    print(f"Retângulo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Largura: {width:.2f}, Altura: {height:.2f}")
+            if np.abs(e) <= 0.35:
+                diameter = get_circle_diameter(raio)
+                classified_clusters[label] = {"type": "circle", "center_x": center_x, "center_y": center_y, "diameter": diameter}
+                info = f"{label}. Círculo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Diâmetro: {diameter:.2f}"
+                print(info)
+                self.classification_info.append(info)
+            else:
+                width, height = get_rectangle_dimensions(cluster_points)
+                classified_clusters[label] = {"type": "rectangle", "center_x": center_x, "center_y": center_y, "width": width, "height": height}
+                info = f"{label}. Retângulo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Largura: {width:.2f}, Altura: {height:.2f}"
+                print(info)
+                self.classification_info.append(info)
         except:
             pass
     
@@ -269,7 +275,7 @@ def sub_sampling(pose_tf, array_pts):
     else:
         pose_repeat = np.repeat(pose_tf, repeats = [array_pts.shape[0]], axis=0)
         dist = np.linalg.norm(array_pts - pose_repeat, axis = 1)
-        if np.any(dist <= 0.04):
+        if np.any(dist <= 0.03):
             pass
         else:
             array_pts = np.vstack((array_pts,pose_tf))
