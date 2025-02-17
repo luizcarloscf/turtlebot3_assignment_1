@@ -10,47 +10,45 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
+
 class Object_classifier(Node):
 
     def __init__(self):
 
-        super().__init__('Object_classifier') #Iniciando classe base "Node"
-        
-        #Subscribers
-        scan_data = Subscriber(self, LaserScan, '/scan')
-        odometry = Subscriber(self, Odometry, '/odom')
+        super().__init__("Object_classifier")  # Iniciando classe base "Node"
 
-        #Sync msgs
+        # Subscribers
+        scan_data = Subscriber(self, LaserScan, "/scan")
+        odometry = Subscriber(self, Odometry, "/odom")
+
+        # Sync msgs
         self.ts = ApproximateTimeSynchronizer([scan_data, odometry], 10, 0.1)
         self.ts.registerCallback(self.scan)
 
-        #Publishers
+        # Publishers
         self.publisher = self.create_publisher(Int16, "/clusters", 10)
         self.pub_msg = Int16()
 
-        #Initial states
+        # Initial states
         self.scan_init = False
         self.scan_points = None
 
-        #Plot
+        # Plot
         self.fig, self.ax = plt.subplots()
-        self.line, = self.ax.plot([], [], 'bo', markersize=2)
-        self.line_robot, = self.ax.plot([], [], 'k', markersize=2)
+        (self.line,) = self.ax.plot([], [], "bo", markersize=2)
+        (self.line_robot,) = self.ax.plot([], [], "k", markersize=2)
 
-        self.previous_max_points = 0 # Variável para armazenar o número de pontos do maior cluster na iteração anterior
+        self.previous_max_points = 0  # Variável para armazenar o número de pontos do maior cluster na iteração anterior
         self.no_growth_counter = 0
-        self.NO_GROWTH_LIMIT = 7
+        self.NO_GROWTH_LIMIT = 12
         self.classified_clusters = {}
-        self.classification_info = [] 
-        
+        self.classification_info = []
+
     def scan(self, scan_data, odometry):
         if not self.scan_init:
             self.scan_init = True
 
         self.convert_coordinates(scan_data, odometry)
-
-
-
 
     def convert_coordinates(self, scan_data, odometry):
         """
@@ -62,15 +60,21 @@ class Object_classifier(Node):
         for index in range(len(scan_data.ranges)):
             if scan_data.range_min < scan_data.ranges[index] < scan_data.range_max:
                 angle = index * scan_data.angle_increment
-                P_S = np.array([[np.cos(angle) * scan_data.ranges[index]], # Matriz de transformação do sensor para o LiDAR
-                                [np.sin(angle) * scan_data.ranges[index]],
-                                [1]])
-                M_PL = np.array([[1, 0, -0.064], # Matriz de transformação do LiDAR para o mundo
-                                    [0, 1, 0],
-                                    [0, 0, 1]])
-                M_LW = np.array([[np.cos(yaw), -np.sin(yaw), self.pose_odom[0]],  # Ponto no referencial do sensor (P_S)
-                                    [np.sin(yaw), np.cos(yaw), self.pose_odom[1]],
-                                    [0, 0, 1]])
+                P_S = np.array(
+                    [
+                        [np.cos(angle) * scan_data.ranges[index]],  # Matriz de transformação do sensor para o LiDAR
+                        [np.sin(angle) * scan_data.ranges[index]],
+                        [1],
+                    ]
+                )
+                M_PL = np.array([[1, 0, -0.064], [0, 1, 0], [0, 0, 1]])  # Matriz de transformação do LiDAR para o mundo
+                M_LW = np.array(
+                    [
+                        [np.cos(yaw), -np.sin(yaw), self.pose_odom[0]],  # Ponto no referencial do sensor (P_S)
+                        [np.sin(yaw), np.cos(yaw), self.pose_odom[1]],
+                        [0, 0, 1],
+                    ]
+                )
                 pose_tf = M_LW @ M_PL @ P_S  # Transforma o ponto para o referencial global
                 self.scan_points = sub_sampling(pose_tf.T[0][0:2], self.scan_points)
 
@@ -88,7 +92,7 @@ def update_plot(scan_points, cluster_labels, classified_clusters, self):
 
     unique_labels = set(cluster_labels)
     colors = plt.cm.jet(np.linspace(0, 1, len(unique_labels)))  # Gera cores variadas
-    
+
     self.ax.clear()  # Limpa o gráfico atual
 
     max_points = 0
@@ -98,75 +102,91 @@ def update_plot(scan_points, cluster_labels, classified_clusters, self):
         if label == -1:
             continue  # Ignorar o ruído
         cluster_points = scan_points[cluster_labels == label]
-        
+
         # Verificar se este cluster tem mais pontos
         if len(cluster_points) > max_points:
             max_points = len(cluster_points)
             max_label = label
-        
+
         # Plotando os pontos do cluster com a cor correspondente
-        scatter = self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c=[color], marker='o', s=10, label=f"Cluster {label}")
-        
+        scatter = self.ax.scatter(
+            cluster_points[:, 0], cluster_points[:, 1], c=[color], marker="o", s=10, label=f"Cluster {label}"
+        )
+
         # Se o cluster for classificado, incluir informações adicionais na legenda
         if label in classified_clusters:
             cluster_info = classified_clusters[label]
             # Referência à posição, tipo e tamanho na legenda
-            size = f"Tamanho: {cluster_info.get('diameter', cluster_info.get('width', 'N/A'))}"
             shape_type = cluster_info["type"]
-            
+
             # Atualizando o rótulo da legenda com as informações adicionais
-            scatter.set_label(f"Cluster {label} - {shape_type.capitalize()}, {size}")
+            scatter.set_label(f"Cluster {label} - {shape_type.capitalize()}")
 
     # Rotular o maior objeto como 'paredes externas'
     if max_label is not None:
         cluster_points = scan_points[cluster_labels == max_label]
-        self.ax.scatter(cluster_points[:, 0], cluster_points[:, 1], c='red', marker='o', s=5, label="paredes externas", edgecolors='r', linewidths=2)
+        self.ax.scatter(
+            cluster_points[:, 0],
+            cluster_points[:, 1],
+            c="red",
+            marker="o",
+            s=5,
+            label="paredes externas",
+            edgecolors="r",
+            linewidths=2,
+        )
 
     # Adicionando legenda
-    self.ax.legend(title="Clusters", loc="best", fontsize=10)
-    
+
+    # box = self.ax.get_position()
+    # self.ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+    # self.ax.legend(title="Clusters", loc="upper left", bbox_to_anchor=(1, 0.5), fontsize=10)
+
     # Títulos e rótulos
     self.ax.set_title("Visualização dos Clusters", fontsize=14)
-    self.ax.set_xlabel("Feature 1", fontsize=12)
-    self.ax.set_ylabel("Feature 2", fontsize=12)
-    
+    self.ax.set_xlabel("Eixo X", fontsize=12)
+    self.ax.set_ylabel("Eixo Y", fontsize=12)
+
     # Atualiza a posição do robô (caso necessário)
     self.line_robot.set_data(self.pose_odom[0], self.pose_odom[1])
     self.ax.relim()
     self.ax.autoscale_view()
-    
+
     plt.pause(0.01)
+
 
 def circle_fitting(cluster_points):
 
-    x = cluster_points[:,0]
-    y = cluster_points[:,1]
+    x = cluster_points[:, 0]
+    y = cluster_points[:, 1]
 
     sumx = sum(x)
     sumy = sum(y)
-    sumx2 = sum([ix ** 2 for ix in x])
-    sumy2 = sum([iy ** 2 for iy in y])
+    sumx2 = sum([ix**2 for ix in x])
+    sumy2 = sum([iy**2 for iy in y])
     sumxy = sum([ix * iy for (ix, iy) in zip(x, y)])
 
-    F = np.array([[sumx2, sumxy, sumx],
-                  [sumxy, sumy2, sumy],
-                  [sumx, sumy, len(x)]])
-    G = np.array([[-sum([ix ** 3 + ix * iy ** 2 for (ix, iy) in zip(x, y)])],
-                  [-sum([ix ** 2 * iy + iy ** 3 for (ix, iy) in zip(x, y)])],
-                  [-sum([ix ** 2 + iy ** 2 for (ix, iy) in zip(x, y)])]])
+    F = np.array([[sumx2, sumxy, sumx], [sumxy, sumy2, sumy], [sumx, sumy, len(x)]])
+    G = np.array(
+        [
+            [-sum([ix**3 + ix * iy**2 for (ix, iy) in zip(x, y)])],
+            [-sum([ix**2 * iy + iy**3 for (ix, iy) in zip(x, y)])],
+            [-sum([ix**2 + iy**2 for (ix, iy) in zip(x, y)])],
+        ]
+    )
     T = np.linalg.inv(F).dot(G)
 
-    cx = float(T[0, 0] / -2) # Extração das coordenadas do centro e do raio
+    cx = float(T[0, 0] / -2)  # Extração das coordenadas do centro e do raio
     cy = float(T[1, 0] / -2)
 
     raio = math.sqrt(cx**2 + cy**2 - T[2, 0])
 
-   
-    distances = [np.hypot(cx - ix, cy - iy) for (ix, iy) in zip(x, y)] #distâncias dos pontos ao centro do círculo
+    distances = [np.hypot(cx - ix, cy - iy) for (ix, iy) in zip(x, y)]  # distâncias dos pontos ao centro do círculo
 
-    max_dist = max(distances) # Maior distância
+    max_dist = max(distances)  # Maior distância
 
-    error = sum([(dist / max_dist) - raio/max_dist for dist in distances])
+    error = sum([(dist / max_dist) - raio / max_dist for dist in distances])
 
     return (cx, cy, raio, error)
 
@@ -194,7 +214,7 @@ def classifier(scan_points, self):
     db = DBSCAN(eps=0.1, min_samples=4).fit(scan_points)
     cluster_labels = db.labels_
     classified_clusters = {}
-    
+
     print("\n\n-----------------------------------------\n")
 
     # Identificar o cluster com mais pontos
@@ -216,14 +236,14 @@ def classifier(scan_points, self):
             # Salvar o último print em um arquivo .txt
             with open("ultimo_print.txt", "w") as file:
                 for info in self.classification_info:
-                    file.write(info + "\n")            # Fechar o código
-            sys.exit()
+                    file.write(info + "\n")  # Fechar o código
+            # sys.exit()
     else:
         self.no_growth_counter = 0
     self.previous_max_points = max_points
-    
+
     self.classification_info.clear()
-    
+
     for label in set(cluster_labels):
         if label == -1 or label == max_label:
             continue
@@ -231,23 +251,34 @@ def classifier(scan_points, self):
         if cluster_points.shape[0] > cluster_len:
             cluster_len = cluster_points.shape[0]
         try:
-            
+
             center_x, center_y, raio, e = circle_fitting(cluster_points)
-            if np.abs(e) <= 0.35:
+            if np.abs(e) <= 0.58:
                 diameter = get_circle_diameter(raio)
-                classified_clusters[label] = {"type": "circle", "center_x": center_x, "center_y": center_y, "diameter": diameter}
+                classified_clusters[label] = {
+                    "type": "circle",
+                    "center_x": center_x,
+                    "center_y": center_y,
+                    "diameter": diameter,
+                }
                 info = f"{label}. Círculo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Diâmetro: {diameter:.2f}"
                 print(info)
                 self.classification_info.append(info)
             else:
                 width, height = get_rectangle_dimensions(cluster_points)
-                classified_clusters[label] = {"type": "rectangle", "center_x": center_x, "center_y": center_y, "width": width, "height": height}
+                classified_clusters[label] = {
+                    "type": "rectangle",
+                    "center_x": center_x,
+                    "center_y": center_y,
+                    "width": width,
+                    "height": height,
+                }
                 info = f"{label}. Retângulo (fit: {abs(e):.3f}) - Posição: X: {center_x:.1f}, Y: {center_y:.1f}, Largura: {width:.2f}, Altura: {height:.2f}"
                 print(info)
                 self.classification_info.append(info)
         except:
             pass
-    
+
     update_plot(scan_points, cluster_labels, classified_clusters, self)
     return cluster_len
 
@@ -266,19 +297,18 @@ def convert_quaternion(quaternion):
     return roll, pitch, yaw
 
 
-
 def sub_sampling(pose_tf, array_pts):
 
     pose_tf = np.array([pose_tf])
     if array_pts is None:
         array_pts = pose_tf
     else:
-        pose_repeat = np.repeat(pose_tf, repeats = [array_pts.shape[0]], axis=0)
-        dist = np.linalg.norm(array_pts - pose_repeat, axis = 1)
+        pose_repeat = np.repeat(pose_tf, repeats=[array_pts.shape[0]], axis=0)
+        dist = np.linalg.norm(array_pts - pose_repeat, axis=1)
         if np.any(dist <= 0.03):
             pass
         else:
-            array_pts = np.vstack((array_pts,pose_tf))
+            array_pts = np.vstack((array_pts, pose_tf))
 
     return array_pts
 
@@ -292,5 +322,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

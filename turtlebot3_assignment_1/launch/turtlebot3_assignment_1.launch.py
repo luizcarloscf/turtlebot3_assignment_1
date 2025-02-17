@@ -13,6 +13,10 @@ def generate_launch_description():
         get_package_share_directory("turtlebot3_random_walk"),
         "launch",
     )
+    turtlebot3_object_classifier_launch_dir = os.path.join(
+        get_package_share_directory("turtlebot3_object_classifier"),
+        "launch",
+    )
 
     turtlebot3_gazebo_launch_dir = os.path.join(
         get_package_share_directory("turtlebot3_assignment_1"),
@@ -50,7 +54,18 @@ def generate_launch_description():
         ),
     )
 
+    turtlebot3_object_classifier_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                turtlebot3_object_classifier_launch_dir,
+                "turtlebot3_object_classifier.launch.py",
+            ),
+        ),
+    )
+
     ld = LaunchDescription()
     ld.add_action(turtlebot3_world_cmd)
     ld.add_action(turtlebot3_random_walk_cmd)
+    ld.add_action(turtlebot3_object_classifier_cmd)
+
     return ld
