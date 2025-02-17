@@ -13,8 +13,7 @@ from tf2_ros import LookupException, TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 
-from turtlebot3_random_walk.utils import (euler_from_quaternion,
-                                          laser_scan_to_polar)
+from turtlebot3_random_walk.utils import euler_from_quaternion, laser_scan_to_polar
 
 
 class State(Enum):
@@ -39,8 +38,7 @@ class Turtlebot3RandomWalk(Node):
                 self.get_logger().info("Updated parameter max_rand=%.2f" % self.max_rand)
             elif param.name == "safety_distance":
                 self.safety_distance = param.value
-                self.get_logger().info("Updated parameter safety_distance=%.2f" %
-                                       self.safety_distance)
+                self.get_logger().info("Updated parameter safety_distance=%.2f" % self.safety_distance)
             elif param.name == "linear_speed":
                 self.linear_speed = param.value
                 self.get_logger().info("Updated parameter linear_speed=%.2f" % self.linear_speed)
@@ -51,7 +49,7 @@ class Turtlebot3RandomWalk(Node):
                 return SetParametersResult(successful=False)
         return SetParametersResult(successful=True)
 
-    def __init__(self, node_name: str = 'turtlebot3_random_walk'):
+    def __init__(self, node_name: str = "turtlebot3_random_walk"):
         super().__init__(node_name=node_name)
         self.declare_parameters(
             namespace="",
@@ -117,7 +115,7 @@ class Turtlebot3RandomWalk(Node):
         )
         self.srv = self.create_service(
             SetBool,
-            'enable',
+            "enable",
             self._enable_callback,
         )
         self._scan_init = False
@@ -127,7 +125,7 @@ class Turtlebot3RandomWalk(Node):
         self.limit = random.randint(self.min_rand, self.max_rand)
 
         self.state = State.UNKOWN
-        self.enable = False
+        self.enable = True
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -175,8 +173,7 @@ class Turtlebot3RandomWalk(Node):
     def detect_obstacle(self):
         scan = self._scan
         try:
-            trans = self._tf_buffer.lookup_transform(scan.header.frame_id, "base_link",
-                                                     scan.header.stamp)
+            trans = self._tf_buffer.lookup_transform(scan.header.frame_id, "base_link", scan.header.stamp)
         except (TransformException, LookupException) as ex:
             self.get_logger().warn(f'Could not transform "odom" to {scan.header.frame_id}: {ex}')
             return
